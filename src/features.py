@@ -40,6 +40,18 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def model_frame(raw: pd.DataFrame) -> pd.DataFrame:
+    """The columns v4's and v5's models read, built row by row with no statistics across rows.
+    Train and test frames are built separately, so nothing from the test file reaches a fitted model."""
+    return pd.DataFrame({
+        "Item_Identifier": raw["Item_Identifier"],
+        "Outlet_Identifier": raw["Outlet_Identifier"],
+        "Outlet_Type": raw["Outlet_Type"],
+        "Item_MRP": raw["Item_MRP"],
+        "ID_Number": raw["Item_Identifier"].str[3:].astype(int),
+    })
+
+
 def split_train_test(df: pd.DataFrame, n_train: int):
     return df.iloc[:n_train].reset_index(drop=True), df.iloc[n_train:].reset_index(drop=True)
 

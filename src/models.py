@@ -1,12 +1,13 @@
-"""Model zoo. Every model takes the same input (the feature DataFrame with category dtypes)
-and returns sales on the original scale, so they can be compared and blended directly."""
+"""Model zoo. Every model takes a DataFrame of feature columns (v1-v3: the cleaned features with
+category dtypes; v4: features.model_frame) and returns sales on the original scale, so they can
+be compared and blended directly."""
 import numpy as np
 import pandas as pd
 from catboost import CatBoostRegressor
 from lightgbm import LGBMRegressor
-from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.base import BaseEstimator, RegressorMixin, TransformerMixin, clone
 from sklearn.compose import ColumnTransformer
-from sklearn.linear_model import GammaRegressor, Ridge
+from sklearn.linear_model import GammaRegressor, PoissonRegressor, Ridge
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, SplineTransformer, StandardScaler
 from xgboost import XGBRegressor
@@ -127,6 +128,141 @@ def _gamma_spline_id():
     )
 
 
+class FourierFeatures(BaseEstimator, TransformerMixin):
+    """cos/sin columns of the item-id number (v4).
+
+    The id effect looks like a wave that repeats about every 20 numbers, so two harmonics of that
+    period describe it with a handful of coefficients instead of one smoothed value per number.
+    drift=True adds a copy of every column times the centred id number (and that column itself),
+    so the wave's level and size can change slowly from 1 to 60.
+    """
+
+    def __init__(self, period=20.0, harmonics=2, drift=False):
+        self.period = period
+        self.harmonics = harmonics
+        self.drift = drift
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        t = np.asarray(X, dtype=float).ravel()
+        cols = []
+        for h in range(1, self.harmonics + 1):
+            cols += [np.cos(2 * np.pi * h * t / self.period), np.sin(2 * np.pi * h * t / self.period)]
+        basis = np.column_stack(cols)
+        if self.drift:
+            centre = (t - 30.5) / 59
+            basis = np.column_stack([basis, basis * centre[:, None], centre])
+        return basis
+
+
+class OutletInverseMRP(BaseEstimator, TransformerMixin):
+    """One column per outlet holding 100 / Item_MRP where the row is in that outlet, else 0. In a
+    log-link model of units this plays the role of the per-outlet line's intercept. The factor 100
+    puts the column on the scale of the others, so the GLM's tiny ridge penalty leaves it alone."""
+
+    def fit(self, X, y=None):
+        self.outlets_ = sorted(X["Outlet_Identifier"].astype(str).unique())
+        return self
+
+    def transform(self, X):
+        outlet = X["Outlet_Identifier"].astype(str).to_numpy()
+        inverse = 100 / X["Item_MRP"].to_numpy(dtype=float)
+        return np.column_stack([np.where(outlet == o, inverse, 0.0) for o in self.outlets_])
+
+
+class UnitsRegressor(BaseEstimator, RegressorMixin):
+    """Fits `estimator` to units = sales / Item_MRP and predicts sales = Item_MRP x predicted units."""
+
+    def __init__(self, estimator=None):
+        self.estimator = estimator
+
+    def fit(self, X, y):
+        units = np.asarray(y, dtype=float) / X["Item_MRP"].to_numpy(dtype=float)
+        self.estimator_ = clone(self.estimator).fit(X, units)
+        return self
+
+    def predict(self, X):
+        return self.estimator_.predict(X) * X["Item_MRP"].to_numpy(dtype=float)
+
+
+def _units_poisson_fourier():
+    """Poisson GLM (log link) on units = sales / MRP (v4).
+
+    Units per item: an outlet level, a per-outlet 1/MRP slope, and the id-number wave (period 20,
+    two harmonics, slow drift). Units behave like counts, so Poisson weighting (rows with more
+    expected units count more) fits better than Gamma's equal weighting.
+    """
+    return UnitsRegressor(make_pipeline(
+        ColumnTransformer([
+            ("outlet", OneHotEncoder(handle_unknown="ignore"), ["Outlet_Identifier"]),
+            ("outlet_inverse_mrp", OutletInverseMRP(), ["Outlet_Identifier", "Item_MRP"]),
+            ("id_wave", FourierFeatures(period=20.0, harmonics=2, drift=True), ["ID_Number"]),
+        ]),
+        PoissonRegressor(alpha=1e-4, solver="newton-cholesky", max_iter=1000),
+    ))
+
+
+def _gamma_fourier_id():
+    """_gamma_spline_id with the 15-knot id-number spline replaced by the two-harmonic wave (v4)."""
+    return make_pipeline(
+        ColumnTransformer([
+            ("outlet", OneHotEncoder(handle_unknown="ignore"), ["Outlet_Identifier"]),
+            ("mrp_spline", SplineTransformer(n_knots=5, degree=3), ["Item_MRP"]),
+            ("id_wave", FourierFeatures(period=19.5, harmonics=2), ["ID_Number"]),
+        ]),
+        GammaRegressor(alpha=1e-4, max_iter=3000),
+    )
+
+
+PRICE_STEP = 0.6658  # every Item_Outlet_Sales value is a whole multiple of this
+
+
+def item_prices(items, mrp, sales, noise=2.0):
+    """Each item's hidden unit price, learned from training rows only (v5).
+
+    In this data, sales are exactly a whole number of units times a price on the PRICE_STEP grid,
+    and each row's Item_MRP is that price plus noise between -2 and 2. The price index q must
+    divide every row's sales / PRICE_STEP and sit within the noise of every row's MRP; if more
+    than one does, the one nearest the item's mean MRP is used.
+    """
+    k = np.round(np.asarray(sales, dtype=float) / PRICE_STEP).astype(np.int64)
+    rows = pd.DataFrame({"item": np.asarray(items), "mrp": np.asarray(mrp, dtype=float), "k": k})
+    prices = {}
+    for item, g in rows.groupby("item"):
+        lo = max(int(np.ceil((g["mrp"].max() - noise - 1e-6) / PRICE_STEP)), 1)
+        hi = int(np.floor((g["mrp"].min() + noise + 1e-6) / PRICE_STEP))
+        fits = [q for q in range(lo, hi + 1) if np.all(g["k"].to_numpy() % q == 0)]
+        if fits:
+            prices[item] = min(fits, key=lambda q: abs(q * PRICE_STEP - g["mrp"].mean())) * PRICE_STEP
+    return prices
+
+
+class TruePriceRegressor(BaseEstimator, RegressorMixin):
+    """Fits `estimator` with Item_MRP replaced by each item's hidden price (v5).
+
+    The prices come from the training rows' sales only (item_prices). Every test item appears in
+    train, so test rows get their exact price; a row of an unknown item keeps its Item_MRP.
+    """
+
+    def __init__(self, estimator=None):
+        self.estimator = estimator
+
+    def _with_true_price(self, X):
+        X = X.copy()
+        X["Item_MRP"] = X["Item_Identifier"].map(self.prices_).astype(float).fillna(X["Item_MRP"])
+        return X
+
+    def fit(self, X, y):
+        self.prices_ = item_prices(X["Item_Identifier"], X["Item_MRP"], y)
+        self.estimator_ = clone(self.estimator).fit(self._with_true_price(X), y)
+        return self
+
+    def predict(self, X):
+        return self.estimator_.predict(self._with_true_price(X))
+
+
 def _lightgbm():
     return LGBMRegressor(
         n_estimators=300, learning_rate=0.03, num_leaves=6, min_child_samples=50,
@@ -160,4 +296,22 @@ def get_models() -> dict:
         "lightgbm": _lightgbm(),
         "xgboost": _xgboost(),
         "catboost": _catboost(),
+    }
+
+
+def get_v3_blend_models() -> dict:
+    """The two models that carry all of v3's blend weight (the other six got weight 0)."""
+    return {"line_x_id_number": PerOutletLinearTimesIDNumber(shrink=20.0, window=1), "gamma_spline_id": _gamma_spline_id()}
+
+
+def get_v4_models() -> dict:
+    """v4's blend pool. Both read only Outlet_Identifier, Item_MRP and ID_Number."""
+    return {"units_poisson_fourier": _units_poisson_fourier(), "gamma_fourier_id": _gamma_fourier_id()}
+
+
+def get_v5_models() -> dict:
+    """v5's blend pool: v4's two models, reading each item's true price instead of the noisy MRP."""
+    return {
+        "units_poisson_true_price": TruePriceRegressor(_units_poisson_fourier()),
+        "gamma_fourier_true_price": TruePriceRegressor(_gamma_fourier_id()),
     }

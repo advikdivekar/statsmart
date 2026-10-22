@@ -10,7 +10,6 @@ SAMPLE_SUBMISSION_CSV = ROOT / "sample_submission_8RXa3c6.csv"
 OUTPUT_DIR = ROOT / "outputs"
 SUBMISSION_DIR = OUTPUT_DIR / "submissions"
 FIGURE_DIR = OUTPUT_DIR / "figures"
-MODEL_DIR = OUTPUT_DIR / "models"
 
 TARGET = "Item_Outlet_Sales"
 ID_COLS = ["Item_Identifier", "Outlet_Identifier"]
@@ -30,3 +29,5 @@ PROBE_SCALE = 1.05
 PROBE_CSV = SUBMISSION_DIR / "probe_v1_x1.05.csv"
 SUBMISSION_V2_CSV = SUBMISSION_DIR / "submission_v2.csv"
 SUBMISSION_V3_CSV = SUBMISSION_DIR / "submission_v3.csv"
+SUBMISSION_V4_CSV = SUBMISSION_DIR / "submission_v4.csv"
+SUBMISSION_V5_CSV = SUBMISSION_DIR / "submission_v5.csv"

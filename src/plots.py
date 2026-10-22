@@ -54,15 +54,16 @@ def save_actual_vs_predicted(y, oof):
     plt.close(fig)
 
 
-def save_id_number_effect(model, X, y):
-    """Bars: raw average of sales / per-outlet-line - 1 for each id number. Line: the smoothed
-    effect the v3 model uses. `model` is a fitted PerOutletLinearTimesIDNumber."""
-    ratio = pd.Series(np.asarray(y) / model.line_.predict(X) - 1)
+def save_id_number_effect(v3_model, X, y, v4_effect):
+    """Bars: raw average of sales / per-outlet-line - 1 for each id number. Grey line: v3's
+    per-number smoothing (`v3_model` is a fitted PerOutletLinearTimesIDNumber). Black line: v4's
+    two-harmonic wave (`v4_effect`, a Series over 1..60 of the blend's relative effect)."""
+    ratio = pd.Series(np.asarray(y) / v3_model.line_.predict(X) - 1)
     raw = ratio.groupby(X["ID_Number"].to_numpy()).mean() * 100
-    smooth = model.effect_ * 100
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.bar(raw.index, raw.values, width=0.8, color=np.where(raw.values >= 0, BLUE, RED), alpha=0.55)
-    ax.plot(smooth.index, smooth.values, color=TEXT, lw=2)
+    ax.plot(v3_model.effect_.index, v3_model.effect_.values * 100, color=TEXT_MUTED, lw=1.5)
+    ax.plot(v4_effect.index, v4_effect.values * 100, color=TEXT, lw=2.2)
     ax.axhline(0, color=TEXT_MUTED, lw=1)
     ax.set_xlabel("Number at the end of the item id (FDA15 -> 15)")
     ax.set_ylabel("Sales vs the outlet's price line (%)")
@@ -71,7 +72,8 @@ def save_id_number_effect(model, X, y):
     handles = [
         matplotlib.patches.Patch(color=BLUE, alpha=0.55, label="average for that number: sells above the line"),
         matplotlib.patches.Patch(color=RED, alpha=0.55, label="average for that number: sells below the line"),
-        matplotlib.lines.Line2D([], [], color=TEXT, lw=2, label="smoothed effect used by v3"),
+        matplotlib.lines.Line2D([], [], color=TEXT_MUTED, lw=1.5, label="v3: smoothed value per number"),
+        matplotlib.lines.Line2D([], [], color=TEXT, lw=2.2, label="v4/v5: two-harmonic wave (period about 20)"),
     ]
     ax.legend(handles=handles, frameon=False, loc="upper right", labelcolor=TEXT_MUTED, fontsize=9)
     fig.tight_layout()
