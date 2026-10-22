@@ -31,7 +31,6 @@ from xgboost import XGBRegressor
 
 warnings.filterwarnings("ignore")
 
-# ----------------------------------------------------------------------------- config
 ROOT = Path(__file__).resolve().parent
 TRAIN_CSV = ROOT / "dataset" / "train_v9rqX0R.csv"
 TEST_CSV = ROOT / "dataset" / "test_AbJTz2l.csv"
@@ -52,7 +51,6 @@ CATEGORICAL = [
 ]
 
 
-# ----------------------------------------------------------------------------- data cleaning
 def clean(df):
     """Fix the known data problems. Uses feature columns only (never the target)."""
     df = df.copy()
@@ -77,7 +75,6 @@ def clean(df):
     return df
 
 
-# ----------------------------------------------------------------------------- features
 def add_features(df):
     df = df.copy()
     df["Item_Category"] = df["Item_Identifier"].str[:2]  # FD food, DR drink, NC non-consumable
@@ -107,7 +104,6 @@ def to_category_dtype(df):
     return df
 
 
-# ----------------------------------------------------------------------------- models
 class PerOutletLinear(BaseEstimator, RegressorMixin):
     """sales = a + b * Item_MRP, fitted separately for each outlet (weighted least squares,
     weight = 1 / MRP**power because the noise grows with price)."""
@@ -176,7 +172,6 @@ def get_models():
     }
 
 
-# ----------------------------------------------------------------------------- evaluation + blending
 def rmse(y_true, y_pred):
     return float(np.sqrt(np.mean((np.asarray(y_true) - np.asarray(y_pred)) ** 2)))
 
@@ -205,7 +200,6 @@ def weighted_sum(predictions, weights):
     return sum(weights[n] * predictions[n] for n in predictions)
 
 
-# ----------------------------------------------------------------------------- main
 def main():
     train_raw, test_raw = pd.read_csv(TRAIN_CSV), pd.read_csv(TEST_CSV)
     full = add_features(clean(pd.concat([train_raw, test_raw], ignore_index=True)))
