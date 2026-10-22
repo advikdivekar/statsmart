@@ -1,0 +1,14 @@
+# environment
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.ipynb_checkpoints/
+catboost_info/
+
+# hackathon data: not redistributed (place the files locally, see README "Run it")
+dataset/
+sample_submission_8RXa3c6.csv
+
+# personal notes, unrelated to this project
+reference/
