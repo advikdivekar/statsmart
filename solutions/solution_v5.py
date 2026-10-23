@@ -1,9 +1,9 @@
 """BigMart Sales Prediction: single-file solution, version 5.
 
 Reads  dataset/train_v9rqX0R.csv, dataset/test_AbJTz2l.csv, sample_submission_8RXa3c6.csv
-Writes outputs/submissions/submission_v5.csv
+Writes solutions/submission_v5.csv
 
-Run:  python solution_v5.py   (needs pandas numpy scikit-learn scipy)
+Run:  python solutions/solution_v5.py   (needs pandas numpy scikit-learn scipy)
 
 Idea: every sale is exactly a whole number of units times the item's price. Each item has one true
 price on a 0.6658 grid, and the Item_MRP column is that price plus random noise between -2 and 2,
@@ -33,11 +33,11 @@ from sklearn.preprocessing import OneHotEncoder, SplineTransformer
 
 warnings.filterwarnings("ignore")
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 TRAIN_CSV = ROOT / "dataset" / "train_v9rqX0R.csv"
 TEST_CSV = ROOT / "dataset" / "test_AbJTz2l.csv"
 SAMPLE_CSV = ROOT / "sample_submission_8RXa3c6.csv"
-OUTPUT_CSV = ROOT / "outputs" / "submissions" / "submission_v5.csv"
+OUTPUT_CSV = ROOT / "solutions" / "submission_v5.csv"
 
 TARGET = "Item_Outlet_Sales"
 ID_COLS = ["Item_Identifier", "Outlet_Identifier"]
