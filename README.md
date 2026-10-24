@@ -2,36 +2,30 @@
 
 Predict `Item_Outlet_Sales` for 5681 (product, store) pairs using 8523 rows with known sales. The score is RMSE (smaller is better).
 
-## Folders
+## Files
 
 | Path | What it holds |
 |---|---|
-| `notebooks/01_eda.ipynb` | Look at the data, plots, Pearson correlation, a t-test, and a quick model |
-| `solutions/solution_v4.py` | Version 4: a line per outlet + a correction for the item id number |
-| `solutions/solution_v5.py` | Version 5: the original submitted solution (public 1136.80, rank 41) |
-| `solutions/submission_v4.csv`, `submission_v5.csv` | The predictions each script writes. `submission_v5.csv` is the exact file that scored 1136.80 |
+| `notebooks/01_eda.ipynb` | EDA: plots, outliers, Pearson correlation, a t-test, a quick model, and the sales = units x price pattern |
+| `solutions/solution_v5.py` | The final solution: Poisson and Gamma models on each item's real price, blended |
+| `solutions/submission_v5.csv` | The predictions the script writes (public score 1136.80, rank 41) |
 | `outputs/figures/` | The plots saved by the notebook |
-| `EXPLANATION.md` | The ideas in plain words |
-| `reference/` | Class notebook and notes |
-| `dataset/` | `train_v9rqX0R.csv` and `test_AbJTz2l.csv` |
 
 ## Run
 
+The data is not included. Download the BigMart files, put `train_v9rqX0R.csv` and `test_AbJTz2l.csv` in `dataset/`, and put `sample_submission_8RXa3c6.csv` in the project folder.
+
 ```
 pip install -r requirements.txt
-python solutions/solution_v4.py
 python solutions/solution_v5.py
 ```
 
-Run both from the project folder. Each prints its cross-validated RMSE and writes its CSV.
+Run from the project folder. It prints the cross-validated RMSE and writes `solutions/submission_v5.csv`.
 
-## Results
+## Result
 
-| Version | Cross-validated RMSE |
+| Model | RMSE |
 |---|---|
 | Average sales for every row | about 1650 |
-| One line per outlet | about 1072 |
-| v4 (simple): + id-number correction | 1062.2 |
-| v5 (original): complex blend with each item's exact price | 1059.4 (public 1136.80) |
-
-`solution_v5.py` reproduces `submission_v5.csv` exactly. v5 uses models beyond class level (Poisson and Gamma regression, a sine/cosine wave over the id number), so it is explained only in outline in `EXPLANATION.md`. The simple v4 is the one to explain in detail. Older versions are in git history (commit `d8cf496`).
+| Final blend, cross-validated | 1059.4 |
+| Public leaderboard | 1136.80 (rank 41) |
